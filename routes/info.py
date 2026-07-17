@@ -5,11 +5,18 @@ Validates and normalizes the video URL, then returns metadata:
   title, thumbnail, duration, uploader, quality list with filesizes.
 
 No media is downloaded — this is a metadata-only endpoint.
+
+Error handling:
+  - In DEBUG mode (FLASK_ENV != "production"), returns detailed error info
+    including exception type, yt-dlp message, and traceback.
+  - In production mode, returns sanitized error messages only.
 """
 
 from __future__ import annotations
 
+import os
 import re
+import traceback
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from flask import Blueprint, Response, jsonify, request
@@ -20,13 +27,31 @@ from utils.logger import get_logger
 log = get_logger(__name__)
 info_bp = Blueprint("info", __name__)
 
+# Debug mode flag
+_IS_DEBUG = os.environ.get("FLASK_ENV", "").lower() != "production"
+
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
-def _err(msg: str, code: int = 400) -> tuple[Response, int]:
-    """Return a standard JSON error response."""
+def _err(msg: str, code: int = 400, exc: BaseException | None = None) -> tuple[Response, int]:
+    """
+    Return a standard JSON error response.
+
+    In DEBUG mode, includes:
+      - exception: exception class name
+      - yt_dlp_message: cleaned error string
+      - traceback: full traceback string
+    """
     log.warning("[/api/info] %d: %s", code, msg)
-    return jsonify({"success": False, "error": msg}), code
+
+    payload: dict = {"success": False, "error": msg}
+
+    if _IS_DEBUG and exc is not None:
+        payload["exception"] = type(exc).__name__
+        payload["yt_dlp_message"] = str(exc)
+        payload["traceback"] = traceback.format_exc()
+
+    return jsonify(payload), code
 
 
 def _is_valid_url(url: str) -> bool:
@@ -135,6 +160,7 @@ def api_info() -> tuple[Response, int]:
     Error responses:
         400 — missing or invalid URL
         422 — yt-dlp cannot process URL (private, geo-blocked, …)
+              In DEBUG mode includes: exception, yt_dlp_message, traceback
         500 — unexpected server error
     """
     body = request.get_json(silent=True)
@@ -158,10 +184,10 @@ def api_info() -> tuple[Response, int]:
     try:
         data = get_video_info(url)
     except VideoServiceError as exc:
-        return _err(str(exc), 422)
+        return _err(str(exc), 422, exc)
     except Exception as exc:
         log.exception("[/api/info] unexpected error for %s", url)
-        return _err(f"Server error: {exc}", 500)
+        return _err(f"Server error: {exc}", 500, exc)
 
     best_quality = data["formats"][0]["quality"] if data["formats"] else "N/A"
 

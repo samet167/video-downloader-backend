@@ -13,9 +13,10 @@ Architecture:
   - The Flask SSE route (/api/progress/<task_id>) polls this dict.
 
 Environment variables:
-  FFMPEG_PATH      — explicit path to ffmpeg binary
+  FFMPEG_PATH       — explicit path to ffmpeg binary
   MAX_VIDEO_SECONDS — max duration in seconds (default 3600)
-  MAX_FILE_MB      — max output file size in MB (default 500)
+  MAX_FILE_MB       — max output file size in MB (default 500)
+  FLASK_ENV         — "production" disables verbose yt-dlp output
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import os
 import re
 import shutil
 import ssl
+import subprocess
 import threading
 import uuid
 from pathlib import Path
@@ -52,9 +54,36 @@ ssl._create_default_https_context = ssl.create_default_context  # noqa: SLF001
 MAX_HEIGHT:   int   = 1080
 MAX_DURATION: int   = int(os.environ.get("MAX_VIDEO_SECONDS", 7200))   # 2 hours
 MAX_FILE_MB:  float = float(os.environ.get("MAX_FILE_MB",     500))    # 500 MB
+IS_DEBUG:     bool  = os.environ.get("FLASK_ENV", "").lower() != "production"
 
 # FFmpeg binary — set FFMPEG_PATH env var on Render or non-PATH installs
 FFMPEG_PATH: str | None = os.environ.get("FFMPEG_PATH") or None
+
+# Verify FFmpeg is accessible
+def _find_ffmpeg() -> str | None:
+    """Return the FFmpeg path if it exists, else try to find it in PATH."""
+    if FFMPEG_PATH and Path(FFMPEG_PATH).exists():
+        return FFMPEG_PATH
+    # Try common paths on Linux (Render)
+    for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
+        if Path(p).exists():
+            return p
+    # Try from PATH
+    try:
+        result = subprocess.run(
+            ["which", "ffmpeg"], capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+RESOLVED_FFMPEG: str | None = _find_ffmpeg()
+if RESOLVED_FFMPEG:
+    log.info("FFmpeg found at: %s", RESOLVED_FFMPEG)
+else:
+    log.warning("FFmpeg NOT found! Video merging will fail.")
 
 # yt-dlp format selector: best video ≤ 1080p + best audio, merged to MP4
 FORMAT_SELECTOR: str = (
@@ -111,31 +140,71 @@ def _quality_label(height: int | None) -> str:
 # Base yt-dlp options (shared between info and download calls)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Realistic browser User-Agent to avoid bot detection
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
+
 def _base_ydl_opts() -> dict[str, Any]:
+    """
+    Return base yt-dlp options optimized for headless server deployment.
+
+    Key fixes for YouTube error 152 / "video unavailable" on Render:
+      1. Use 'default' player_client — lets yt-dlp auto-negotiate the best
+         client strategy (includes PO token handling since yt-dlp 2025.01+).
+      2. Set realistic User-Agent and HTTP headers to avoid bot detection.
+      3. Increase retries and socket timeout for Render's shared network.
+      4. Enable 'formats=missing_pot' to skip formats needing PO tokens
+         rather than failing entirely.
+    """
     opts: dict[str, Any] = {
-        "quiet":              True,
-        "no_warnings":        True,
-        "nocheckcertificate": False,      # keep SSL verification ON
+        # ── Logging ───────────────────────────────────────────────────────
+        "quiet":              not IS_DEBUG,
+        "no_warnings":        not IS_DEBUG,
+        "verbose":            IS_DEBUG,
+
+        # ── SSL ───────────────────────────────────────────────────────────
+        "nocheckcertificate": False,
         "ssl_certificate":    _CERT_FILE,
-        "socket_timeout":     30,
-        "retries":            5,
-        "fragment_retries":   5,
-        # ── YouTube "not available on this app" fix ────────────────────
-        # YouTube now requires a PO token for WEB client requests that
-        # don't originate from a real browser session.  Switching the
-        # extractor to the TV_EMBED client (or WEB_EMBEDDED_PLAYER as
-        # fallback) bypasses this check without needing cookies.
-        # References:
-        #   https://github.com/yt-dlp/yt-dlp/issues/10128
-        #   https://github.com/yt-dlp/yt-dlp/wiki/Extractors
+
+        # ── Network resilience ────────────────────────────────────────────
+        "socket_timeout":     45,
+        "retries":            10,
+        "fragment_retries":   10,
+        "file_access_retries": 5,
+        "extractor_retries":  5,
+
+        # ── HTTP headers (mimic real browser) ─────────────────────────────
+        "http_headers": {
+            "User-Agent":      _USER_AGENT,
+            "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Sec-Fetch-Mode":  "navigate",
+        },
+
+        # ── YouTube extractor configuration ───────────────────────────────
+        # 'default' = let yt-dlp pick the best client strategy automatically.
+        # This is critical for 2025+ versions which handle PO tokens internally.
+        # 'formats=missing_pot' = skip formats that require a PO token the
+        # server cannot provide, rather than erroring out entirely.
         "extractor_args": {
             "youtube": {
-                "player_client": ["web_embedded", "tv_embedded", "web", "android"],
+                "player_client": ["default"],
+                "formats":       ["missing_pot"],
             }
         },
+
+        # ── Misc ──────────────────────────────────────────────────────────
+        "geo_bypass":         True,
+        "no_check_formats":   True,
     }
-    if FFMPEG_PATH:
-        opts["ffmpeg_location"] = FFMPEG_PATH
+
+    if RESOLVED_FFMPEG:
+        opts["ffmpeg_location"] = RESOLVED_FFMPEG
+
     return opts
 
 
@@ -166,13 +235,18 @@ def get_video_info(url: str) -> dict[str, Any]:
         "ignoreerrors":  False,
     }
 
+    log.info("get_video_info: url=%s", url)
+    log.debug("get_video_info: yt-dlp opts=%s", {k: v for k, v in opts.items() if k != "http_headers"})
+
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as exc:
         msg = re.sub(r"^ERROR:\s*", "", str(exc)).strip()
+        log.error("get_video_info DownloadError: %s", msg)
         raise ValueError(msg) from exc
     except Exception as exc:
+        log.exception("get_video_info unexpected error for %s", url)
         raise ValueError(f"Cannot fetch video info: {exc}") from exc
 
     if info is None:
@@ -357,10 +431,6 @@ def download_video(
         "progress_hooks":      [_progress_hook],
         "ignoreerrors":        False,
         "windowsfilenames":    True,       # safe filenames on all OS
-        # FFmpeg post-processor: copy video stream, encode audio to AAC
-        "postprocessor_args": {
-            "ffmpeg_i": ["-c:v", "copy", "-c:a", "aac"],
-        },
     }
 
     # ── Run download ──────────────────────────────────────────────────

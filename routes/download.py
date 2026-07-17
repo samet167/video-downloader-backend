@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -123,8 +124,8 @@ def api_download_direct() -> tuple[Response, int] | Response:
     # ── Download to temp directory ────────────────────────────────────────
     import uuid
     import yt_dlp
-    import certifi
-    import re
+
+    from downloader import _base_ydl_opts, RESOLVED_FFMPEG
 
     tmp_dir = get_temp_dir()
     task_id = str(uuid.uuid4())[:8]
@@ -141,29 +142,16 @@ def api_download_direct() -> tuple[Response, int] | Response:
         "best"
     )
 
-    ffmpeg_path = os.environ.get("FFMPEG_PATH") or None
-
+    # Use the same base options as the downloader engine
+    # (includes fixed player_client, User-Agent, retries, etc.)
     ydl_opts = {
-        "quiet":              True,
-        "no_warnings":        True,
-        "nocheckcertificate": False,
-        "ssl_certificate":    certifi.where(),
-        "socket_timeout":     30,
-        "retries":            5,
-        "fragment_retries":   5,
-        "format":             fmt_selector,
+        **_base_ydl_opts(),
+        "format":              fmt_selector,
         "merge_output_format": "mp4",
         "outtmpl":            out_tmpl,
         "ignoreerrors":       False,
         "windowsfilenames":   True,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web_embedded", "tv_embedded", "web", "android"],
-            }
-        },
     }
-    if ffmpeg_path:
-        ydl_opts["ffmpeg_location"] = ffmpeg_path
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
