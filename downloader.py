@@ -97,8 +97,12 @@ def _find_nodejs() -> str | None:
             return result.stdout.strip()
     except Exception:
         pass
-    # Common paths
-    for p in ["/usr/bin/node", "/usr/local/bin/node"]:
+    # Common paths (including Render persistent path)
+    for p in [
+        "/opt/render/project/src/.node/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+    ]:
         if Path(p).exists():
             return p
     return None

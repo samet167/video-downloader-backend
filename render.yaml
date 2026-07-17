@@ -13,33 +13,40 @@ services:
     region: singapore
 
     # ── Build ──────────────────────────────────────────────────────────────
-    # Strategy: Download Node.js 20 LTS pre-built binary directly from
-    # nodejs.org. This bypasses all apt/NodeSource issues on Render.
-    # The binary is placed in /opt/node and added to PATH.
+    # Strategy: Install Node.js into the persistent project directory so it
+    # survives Render deploys. /opt/render/project/src/ is the working dir.
     buildCommand: |
       set -e
       echo "=== Installing FFmpeg ==="
       apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl xz-utils
-      echo "=== Downloading Node.js 20 LTS binary ==="
+
+      echo "=== Installing Node.js 20 LTS ==="
+      NODE_DIR="/opt/render/project/src/.node"
+      mkdir -p "$NODE_DIR"
       curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -o /tmp/node.tar.xz
-      mkdir -p /opt/node
-      tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1
+      tar -xJf /tmp/node.tar.xz -C "$NODE_DIR" --strip-components=1
       rm /tmp/node.tar.xz
-      ln -sf /opt/node/bin/node /usr/local/bin/node
-      ln -sf /opt/node/bin/npm /usr/local/bin/npm
-      ln -sf /opt/node/bin/npx /usr/local/bin/npx
+
+      # Also create symlinks in /usr/local/bin for build-time
+      ln -sf "$NODE_DIR/bin/node" /usr/local/bin/node
+      ln -sf "$NODE_DIR/bin/npm" /usr/local/bin/npm
+      ln -sf "$NODE_DIR/bin/npx" /usr/local/bin/npx
+
       echo "=== Verify Node.js ==="
       node --version
+
       echo "=== Installing Python deps ==="
       pip install --upgrade pip
       pip install -r requirements.txt
       pip install -U --pre "yt-dlp[default]"
+
       echo "=== Verify yt-dlp ==="
       python -c "import yt_dlp; print('yt-dlp:', yt_dlp.version.__version__)"
       echo "=== Build complete ==="
 
     # ── Start ──────────────────────────────────────────────────────────────
-    startCommand: gunicorn -c gunicorn.conf.py app:app
+    # Verify Node.js availability before starting gunicorn
+    startCommand: "export PATH=/opt/render/project/src/.node/bin:$PATH && echo \"Node: $(node --version 2>/dev/null || echo NOT_FOUND)\" && exec gunicorn -c gunicorn.conf.py app:app"
 
     # ── Health Check ───────────────────────────────────────────────────────
     healthCheckPath: /health
@@ -77,4 +84,4 @@ services:
 
       # Ensure Node.js is in PATH at runtime
       - key: PATH
-        value: "/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        value: "/opt/render/project/src/.node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

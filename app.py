@@ -22,6 +22,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Ensure Node.js (Render persistent path) is in PATH ────────────────────
+# On Render, Node.js is installed to /opt/render/project/src/.node/bin
+# during build. Inject it into PATH early so yt-dlp can find it.
+_RENDER_NODE_DIR = "/opt/render/project/src/.node/bin"
+if os.path.isdir(_RENDER_NODE_DIR):
+    _current_path = os.environ.get("PATH", "")
+    if _RENDER_NODE_DIR not in _current_path:
+        os.environ["PATH"] = f"{_RENDER_NODE_DIR}:{_current_path}"
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 
