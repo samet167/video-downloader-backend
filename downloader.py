@@ -292,6 +292,21 @@ def _base_ydl_opts() -> dict[str, Any]:
         opts["cookiefile"] = cookie_file
         log.info("Using cookie file: %s", cookie_file)
 
+    # ── PO Token provider (bgutil) ────────────────────────────────────────
+    # bgutil-ytdlp-pot-provider script mode: auto-generates PO tokens
+    # to bypass "Sign in to confirm you're not a bot" on datacenter IPs.
+    pot_server_home = os.environ.get(
+        "POT_SERVER_HOME",
+        "/opt/render/project/src/bgutil-ytdlp-pot-provider/server"
+    )
+    if Path(pot_server_home).is_dir():
+        # Tell the plugin where the server scripts are located
+        ea = opts.get("extractor_args", {})
+        ea.setdefault("youtubepot-bgutilscript", {})
+        ea["youtubepot-bgutilscript"]["server_home"] = [pot_server_home]
+        opts["extractor_args"] = ea
+        log.info("POT provider (bgutil script) configured: %s", pot_server_home)
+
     # ── JS Runtime configuration ──────────────────────────────────────────
     # Deno is the recommended runtime (enabled by default in yt-dlp).
     # Format: dict of {runtime_name: {config_dict}}

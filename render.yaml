@@ -37,6 +37,17 @@ services:
       pip install --upgrade pip
       pip install -r requirements.txt
       pip install -U --pre "yt-dlp[default]"
+      pip install -U bgutil-ytdlp-pot-provider
+
+      echo "=== Setting up POT provider (bgutil) ==="
+      cd /opt/render/project/src
+      if [ ! -d "bgutil-ytdlp-pot-provider" ]; then
+        git clone --single-branch --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git
+      fi
+      cd bgutil-ytdlp-pot-provider/server
+      npm ci
+      npx tsc
+      cd /opt/render/project/src
 
       echo "=== Verify yt-dlp + EJS ==="
       python -c "import yt_dlp; print('yt-dlp:', yt_dlp.version.__version__)"
