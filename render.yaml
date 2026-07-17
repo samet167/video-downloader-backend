@@ -1,8 +1,8 @@
 ###############################################################################
 # render.yaml — Render Blueprint for Flask Video Downloader Backend
 # ===========================================================================
-# CRITICAL: yt-dlp 2025+ requires Node.js for YouTube n-parameter challenge.
-# We download the Node.js binary directly (no apt/NodeSource needed).
+# CRITICAL: yt-dlp 2025+ requires a JS runtime (Deno recommended) + yt-dlp-ejs
+# for YouTube JS challenge solving. We install Deno directly from GitHub.
 ###############################################################################
 
 services:

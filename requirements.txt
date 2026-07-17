@@ -8,10 +8,11 @@
 #
 # SYSTEM DEPENDENCIES (installed via render.yaml buildCommand):
 #   • FFmpeg:  apt-get install -y ffmpeg
-#   • Node.js: apt-get install -y nodejs npm
+#   • Deno:    downloaded from GitHub releases (recommended JS runtime)
 #
-# yt-dlp 2025+ REQUIRES Node.js for YouTube's n-parameter challenge.
-# Without Node.js you get: TypeError: 'NoneType' object is not callable
+# yt-dlp 2025+ REQUIRES a JS runtime (Deno recommended, Node.js ≥ 22 also works)
+# AND the yt-dlp-ejs package for YouTube JS challenge solving.
+# Without these you get: TypeError: 'NoneType' object is not callable
 # =============================================================================
 
 # --- Web Framework ---
@@ -22,7 +23,8 @@ flask-cors==5.0.1
 # The [default] extra pulls in optional deps (brotli, websockets, yt-dlp-ejs, etc.)
 # render.yaml buildCommand also runs: pip install -U --pre "yt-dlp[default]"
 # to get the latest nightly with YouTube extractor fixes.
-yt-dlp[default]>=2025.06.30
+# IMPORTANT: yt-dlp-ejs is REQUIRED for YouTube JS challenge solving!
+yt-dlp[default]>=2026.07.04
 
 # --- Production WSGI Server ---
 gunicorn==23.0.0
