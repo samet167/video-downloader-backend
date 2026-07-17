@@ -80,6 +80,11 @@ services:
       - key: FFMPEG_PATH
         value: "/usr/bin/ffmpeg"
 
+      # Path to YouTube cookies file (Netscape format) for bot detection bypass.
+      # Upload cookies.txt as a Secret File on Render dashboard.
+      - key: YOUTUBE_COOKIE_FILE
+        value: "/etc/secrets/youtube_cookies.txt"
+
       # Ensure Deno is in PATH at runtime
       - key: PATH
         value: "/opt/render/project/src/.deno:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

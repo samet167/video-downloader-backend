@@ -285,6 +285,13 @@ def _base_ydl_opts() -> dict[str, Any]:
     if RESOLVED_FFMPEG:
         opts["ffmpeg_location"] = RESOLVED_FFMPEG
 
+    # ── YouTube Cookie file (bypass bot detection on datacenter IPs) ───────
+    # Set YOUTUBE_COOKIE_FILE env var to path of Netscape-format cookies.txt
+    cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE", "")
+    if cookie_file and Path(cookie_file).is_file():
+        opts["cookiefile"] = cookie_file
+        log.info("Using cookie file: %s", cookie_file)
+
     # ── JS Runtime configuration ──────────────────────────────────────────
     # Deno is the recommended runtime (enabled by default in yt-dlp).
     # Format: dict of {runtime_name: {config_dict}}
