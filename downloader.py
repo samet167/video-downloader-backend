@@ -327,12 +327,15 @@ def get_video_info(url: str) -> dict[str, Any]:
         log.error("get_video_info DownloadError: %s", msg)
         raise ValueError(msg) from exc
     except TypeError as exc:
-        # This is the JS runtime error — provide clear message
-        log.error("get_video_info TypeError (likely missing JS runtime): %s", exc)
+        # Capture full traceback for debugging
+        import traceback
+        tb = traceback.format_exc()
+        log.error("get_video_info TypeError: %s\n%s", exc, tb)
         raise ValueError(
-            "YouTube requires a JavaScript runtime (Node.js) that is not available "
-            "on this server. Please ensure Node.js is installed. "
-            f"Original error: {exc}"
+            f"TypeError during video info extraction. "
+            f"Node.js: {RESOLVED_NODEJS}, Deno: {RESOLVED_DENO}. "
+            f"Error: {exc}. "
+            f"Traceback: {tb[-500:]}"
         ) from exc
     except Exception as exc:
         log.exception("get_video_info unexpected error for %s", url)
