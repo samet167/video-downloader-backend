@@ -19,7 +19,7 @@ Flask==3.1.1
 flask-cors==5.0.1
 
 # --- Video Download Engine ---
-# The [default] extra pulls in optional deps (brotli, websockets, etc.)
+# The [default] extra pulls in optional deps (brotli, websockets, yt-dlp-ejs, etc.)
 # render.yaml buildCommand also runs: pip install -U --pre "yt-dlp[default]"
 # to get the latest nightly with YouTube extractor fixes.
 yt-dlp[default]>=2025.06.30

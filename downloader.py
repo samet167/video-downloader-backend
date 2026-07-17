@@ -108,6 +108,40 @@ def _find_nodejs() -> str | None:
     return None
 
 
+def _find_deno() -> str | None:
+    """Return path to Deno binary, or None if not available."""
+    try:
+        result = subprocess.run(
+            ["which", "deno"], capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    # Common paths (including Render persistent path)
+    for p in [
+        "/opt/render/project/src/.deno/deno",
+        "/usr/local/bin/deno",
+        "/usr/bin/deno",
+    ]:
+        if Path(p).exists():
+            return p
+    return None
+
+
+def _get_deno_version() -> str:
+    """Return Deno version string or 'NOT FOUND'."""
+    try:
+        result = subprocess.run(
+            ["deno", "--version"], capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip().split("\n")[0]
+    except Exception:
+        pass
+    return "NOT FOUND"
+
+
 def _get_nodejs_version() -> str:
     """Return Node.js version string or 'NOT FOUND'."""
     try:
@@ -123,18 +157,21 @@ def _get_nodejs_version() -> str:
 
 RESOLVED_FFMPEG: str | None = _find_ffmpeg()
 RESOLVED_NODEJS: str | None = _find_nodejs()
+RESOLVED_DENO:   str | None = _find_deno()
 
 if RESOLVED_FFMPEG:
     log.info("FFmpeg found at: %s", RESOLVED_FFMPEG)
 else:
     log.warning("FFmpeg NOT found! Video merging will fail.")
 
-if RESOLVED_NODEJS:
+if RESOLVED_DENO:
+    log.info("Deno found at: %s (%s)", RESOLVED_DENO, _get_deno_version())
+elif RESOLVED_NODEJS:
     log.info("Node.js found at: %s (%s)", RESOLVED_NODEJS, _get_nodejs_version())
 else:
     log.warning(
-        "Node.js NOT found! yt-dlp will fail with TypeError on YouTube. "
-        "Install nodejs via: apt-get install -y nodejs"
+        "No JS runtime (Deno/Node.js) found! yt-dlp will fail on YouTube. "
+        "Install deno or nodejs >= 22."
     )
 
 # yt-dlp format selector: best video ≤ 1080p + best audio, merged to MP4
@@ -198,11 +235,12 @@ def _base_ydl_opts() -> dict[str, Any]:
 
     Key configuration:
       - player_client=default: lets yt-dlp auto-pick the best YouTube client.
-        This triggers the JS runtime (Node.js) for n-parameter solving.
+        This triggers the JS runtime (Deno/Node.js) for n-parameter solving.
       - formats=missing_pot: skip formats requiring PO token instead of failing.
       - Realistic User-Agent to reduce bot detection.
       - High retries + timeout for Render's shared network.
       - geo_bypass for region-restricted content.
+      - remote_components: download EJS scripts from npm (Deno) or GitHub.
     """
     opts: dict[str, Any] = {
         # ── Logging ───────────────────────────────────────────────────────
@@ -246,6 +284,18 @@ def _base_ydl_opts() -> dict[str, Any]:
 
     if RESOLVED_FFMPEG:
         opts["ffmpeg_location"] = RESOLVED_FFMPEG
+
+    # ── JS Runtime configuration ──────────────────────────────────────────
+    # Deno is the recommended runtime (enabled by default in yt-dlp).
+    # If Deno is available, also enable downloading EJS scripts from npm.
+    if RESOLVED_DENO:
+        opts["js_runtimes"] = f"deno:{RESOLVED_DENO}"
+        # Allow yt-dlp to download EJS challenge scripts from npm via Deno
+        opts["remote_components"] = {"ejs": "npm"}
+    elif RESOLVED_NODEJS:
+        opts["js_runtimes"] = f"node:{RESOLVED_NODEJS}"
+        # Fallback: download EJS scripts from GitHub for Node.js
+        opts["remote_components"] = {"ejs": "github"}
 
     return opts
 

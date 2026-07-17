@@ -13,40 +13,38 @@ services:
     region: singapore
 
     # ── Build ──────────────────────────────────────────────────────────────
-    # Strategy: Install Node.js into the persistent project directory so it
-    # survives Render deploys. /opt/render/project/src/ is the working dir.
+    # Strategy: Install Deno (recommended by yt-dlp) for YouTube JS challenges.
+    # Deno is lightweight, enabled by default in yt-dlp, and needs no extra config.
+    # Also install yt-dlp-ejs scripts for challenge solving.
     buildCommand: |
       set -e
       echo "=== Installing FFmpeg ==="
-      apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl xz-utils
+      apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl unzip
 
-      echo "=== Installing Node.js 20 LTS ==="
-      NODE_DIR="/opt/render/project/src/.node"
-      mkdir -p "$NODE_DIR"
-      curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -o /tmp/node.tar.xz
-      tar -xJf /tmp/node.tar.xz -C "$NODE_DIR" --strip-components=1
-      rm /tmp/node.tar.xz
+      echo "=== Installing Deno (recommended JS runtime for yt-dlp) ==="
+      DENO_DIR="/opt/render/project/src/.deno"
+      mkdir -p "$DENO_DIR"
+      curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip
+      unzip -o /tmp/deno.zip -d "$DENO_DIR"
+      rm /tmp/deno.zip
+      chmod +x "$DENO_DIR/deno"
+      ln -sf "$DENO_DIR/deno" /usr/local/bin/deno
 
-      # Also create symlinks in /usr/local/bin for build-time
-      ln -sf "$NODE_DIR/bin/node" /usr/local/bin/node
-      ln -sf "$NODE_DIR/bin/npm" /usr/local/bin/npm
-      ln -sf "$NODE_DIR/bin/npx" /usr/local/bin/npx
-
-      echo "=== Verify Node.js ==="
-      node --version
+      echo "=== Verify Deno ==="
+      deno --version
 
       echo "=== Installing Python deps ==="
       pip install --upgrade pip
       pip install -r requirements.txt
       pip install -U --pre "yt-dlp[default]"
 
-      echo "=== Verify yt-dlp ==="
+      echo "=== Verify yt-dlp + EJS ==="
       python -c "import yt_dlp; print('yt-dlp:', yt_dlp.version.__version__)"
+      python -c "import yt_dlp_ejs; print('yt-dlp-ejs:', yt_dlp_ejs.__version__)" || echo "WARNING: yt-dlp-ejs not found as separate package (may be bundled)"
       echo "=== Build complete ==="
 
     # ── Start ──────────────────────────────────────────────────────────────
-    # Verify Node.js availability before starting gunicorn
-    startCommand: "export PATH=/opt/render/project/src/.node/bin:$PATH && echo \"Node: $(node --version 2>/dev/null || echo NOT_FOUND)\" && exec gunicorn -c gunicorn.conf.py app:app"
+    startCommand: "export PATH=/opt/render/project/src/.deno:$PATH && echo \"Deno: $(deno --version 2>/dev/null | head -1 || echo NOT_FOUND)\" && exec gunicorn -c gunicorn.conf.py app:app"
 
     # ── Health Check ───────────────────────────────────────────────────────
     healthCheckPath: /health
@@ -82,6 +80,6 @@ services:
       - key: FFMPEG_PATH
         value: "/usr/bin/ffmpeg"
 
-      # Ensure Node.js is in PATH at runtime
+      # Ensure Deno is in PATH at runtime
       - key: PATH
-        value: "/opt/render/project/src/.node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        value: "/opt/render/project/src/.deno:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
