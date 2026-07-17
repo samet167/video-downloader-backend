@@ -6,52 +6,36 @@
 # Requires: Python 3.12+
 # Deploy:   Render (gunicorn), local dev (flask run / python app.py)
 #
-# NOTE: FFmpeg is a system binary, NOT a Python package.
-#   • Render:   installed via buildCommand in render.yaml
-#   • macOS:    brew install ffmpeg
-#   • Linux:    apt-get install ffmpeg
+# SYSTEM DEPENDENCIES (installed via render.yaml buildCommand):
+#   • FFmpeg:  apt-get install -y ffmpeg
+#   • Node.js: apt-get install -y nodejs npm
+#
+# yt-dlp 2025+ REQUIRES Node.js for YouTube's n-parameter challenge.
+# Without Node.js you get: TypeError: 'NoneType' object is not callable
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# 1. Web Framework
-# -----------------------------------------------------------------------------
+# --- Web Framework ---
 Flask==3.1.1
 flask-cors==5.0.1
 
-# -----------------------------------------------------------------------------
-# 2. Video Download Engine
-#    yt-dlp — use --pre to get the latest nightly with YouTube fixes.
-#    YouTube frequently changes their API; the nightly builds include
-#    up-to-date extractor patches (PO token handling, player_client fixes).
-#
-#    IMPORTANT: On Render, the buildCommand uses:
-#      pip install -U --pre "yt-dlp[default]"
-#    to always pull the latest nightly. The version below is a minimum floor.
-# -----------------------------------------------------------------------------
-yt-dlp>=2025.06.30
+# --- Video Download Engine ---
+# The [default] extra pulls in optional deps (brotli, websockets, etc.)
+# render.yaml buildCommand also runs: pip install -U --pre "yt-dlp[default]"
+# to get the latest nightly with YouTube extractor fixes.
+yt-dlp[default]>=2025.06.30
 
-# -----------------------------------------------------------------------------
-# 3. Production WSGI Server
-# -----------------------------------------------------------------------------
+# --- Production WSGI Server ---
 gunicorn==23.0.0
 
-# -----------------------------------------------------------------------------
-# 4. Environment Variable Management
-# -----------------------------------------------------------------------------
+# --- Environment Variable Management ---
 python-dotenv==1.0.1
 
-# -----------------------------------------------------------------------------
-# 5. SSL / TLS Certificate Bundle
-# -----------------------------------------------------------------------------
+# --- SSL Certificate Bundle ---
 certifi==2025.4.26
 
-# -----------------------------------------------------------------------------
-# 6. API Rate Limiting (Security)
-# -----------------------------------------------------------------------------
+# --- API Rate Limiting ---
 Flask-Limiter==3.7.0
 limits==3.13.0
 
-# -----------------------------------------------------------------------------
-# 7. Async Worker for Gunicorn (gevent for SSE streaming)
-# -----------------------------------------------------------------------------
+# --- Async Worker for Gunicorn (gevent for SSE streaming) ---
 gevent==24.2.1

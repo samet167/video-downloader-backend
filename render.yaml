@@ -1,8 +1,6 @@
 ###############################################################################
 # render.yaml — Render Blueprint for Flask Video Downloader Backend
 # ===========================================================================
-# Docs: https://render.com/docs/blueprint-spec
-#
 # Place this file at the ROOT of your backend repository.
 # Frontend is deployed separately on Vercel.
 ###############################################################################
@@ -15,16 +13,25 @@ services:
     region: singapore
 
     # ── Build ──────────────────────────────────────────────────────────────
-    # 1. Install FFmpeg system dependency (required by yt-dlp for merging)
-    # 2. Upgrade pip
-    # 3. Install Python packages from requirements.txt
-    # 4. Install latest yt-dlp NIGHTLY (critical for YouTube compatibility)
-    #    The nightly includes latest extractor fixes for PO tokens, etc.
+    # System dependencies:
+    #   - ffmpeg: yt-dlp needs it to merge video+audio streams into MP4
+    #   - nodejs + npm: yt-dlp 2025+ REQUIRES a JavaScript runtime to solve
+    #     YouTube's n-parameter throttle challenge. Without Node.js you get:
+    #       TypeError: 'NoneType' object is not callable
+    #       at yt_dlp/utils/_jsruntime.py
+    #   - ca-certificates: for HTTPS connections
+    #
+    # Python:
+    #   - Install requirements.txt first (has yt-dlp[default]>=2025.06.30)
+    #   - Then force-upgrade yt-dlp to the latest nightly (critical for YT)
     buildCommand: |
-      apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg
+      apt-get update -qq
+      apt-get install -y --no-install-recommends ffmpeg nodejs npm ca-certificates
+      node --version || echo "WARNING: Node.js not available"
       pip install --upgrade pip
       pip install -r requirements.txt
       pip install -U --pre "yt-dlp[default]"
+      python -c "import yt_dlp; print('yt-dlp version:', yt_dlp.version.__version__)"
 
     # ── Start ──────────────────────────────────────────────────────────────
     startCommand: gunicorn -c gunicorn.conf.py app:app
