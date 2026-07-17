@@ -297,7 +297,7 @@ def _base_ydl_opts() -> dict[str, Any]:
     # to bypass "Sign in to confirm you're not a bot" on datacenter IPs.
     pot_server_home = os.environ.get(
         "POT_SERVER_HOME",
-        "/opt/render/project/src/bgutil-ytdlp-pot-provider/server"
+        "/opt/render/project/src/pot-provider/server"
     )
     if Path(pot_server_home).is_dir():
         # Tell the plugin where the server scripts are located
