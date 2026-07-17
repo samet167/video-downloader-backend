@@ -1,0 +1,79 @@
+###############################################################################
+# render.yaml — Render Blueprint for Flask Video Downloader Backend
+# ===========================================================================
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Place this file at the ROOT of your backend repository:
+#   video-downloader-backend/render.yaml
+#
+# This file tells Render how to build and run your Flask API.
+# Frontend is deployed separately on Vercel.
+###############################################################################
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Web Service — Flask REST API
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: video-downloader-backend
+    runtime: python
+    region: singapore               # Change to your preferred region
+    plan: free                      # free tier (512 MB RAM, shared CPU)
+
+    # ── Build ──────────────────────────────────────────────────────────────
+    # 1. Install FFmpeg system dependency (required by yt-dlp for merging)
+    # 2. Upgrade pip
+    # 3. Install Python packages from requirements.txt
+    buildCommand: |
+      apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg
+      pip install --upgrade pip
+      pip install -r requirements.txt
+
+    # ── Start ──────────────────────────────────────────────────────────────
+    # Production WSGI server with gevent async workers for SSE streaming
+    startCommand: gunicorn -c gunicorn.conf.py app:app
+
+    # ── Health Check ───────────────────────────────────────────────────────
+    healthCheckPath: /health
+
+    # ── Environment Variables ──────────────────────────────────────────────
+    envVars:
+      # Python version for Render to install
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+
+      # Flask environment mode
+      - key: FLASK_ENV
+        value: production
+
+      # Flask secret key — CHANGE THIS in Render Dashboard!
+      # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+      - key: SECRET_KEY
+        sync: false                 # Must be set manually in Render Dashboard
+
+      # Frontend URL for CORS — set to your Vercel deployment URL
+      # Example: https://your-app.vercel.app
+      - key: FRONTEND_URL
+        sync: false                 # Must be set manually in Render Dashboard
+
+      # Maximum video duration allowed (seconds). Default: 3600 = 1 hour
+      - key: MAX_VIDEO_SECONDS
+        value: "3600"
+
+      # Maximum output file size (MB). Default: 500
+      - key: MAX_FILE_MB
+        value: "500"
+
+      # Log level: DEBUG | INFO | WARNING | ERROR
+      - key: LOG_LEVEL
+        value: "INFO"
+
+      # FFmpeg binary path (pre-installed via buildCommand)
+      - key: FFMPEG_PATH
+        value: /usr/bin/ffmpeg
+
+      # Temp directory for intermediate downloads (auto-cleaned)
+      - key: TMP_DIR
+        value: /tmp/videodl
+
+      # PORT is injected automatically by Render — do not set manually

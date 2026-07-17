@@ -1,0 +1,69 @@
+# =============================================================================
+# backend/requirements.txt
+# Flask Video Downloader — Production Dependencies
+# =============================================================================
+# Install:  pip install -r requirements.txt
+# Requires: Python 3.12+
+# Deploy:   Render (gunicorn), local dev (flask run / python app.py)
+#
+# NOTE: FFmpeg is a system binary, NOT a Python package.
+#   • Render:   add a native package "ffmpeg" in render.yaml
+#   • macOS:    brew install ffmpeg
+#   • Linux:    apt-get install ffmpeg
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Web Framework
+#    Flask  — lightweight WSGI micro-framework for the REST API
+#    Flask-CORS — adds Cross-Origin Resource Sharing headers so the frontend
+#                 (served from a different port/domain) can call the API
+# -----------------------------------------------------------------------------
+Flask==3.1.1
+flask-cors==5.0.1
+
+# -----------------------------------------------------------------------------
+# 2. Video Download Engine
+#    yt-dlp — actively maintained fork of youtube-dl; handles 1000+ sites,
+#              format selection, merging via FFmpeg, and metadata extraction.
+#              Pin to a recent date-versioned release; update regularly to
+#              keep up with platform changes (YouTube extractor updates etc.)
+# -----------------------------------------------------------------------------
+yt-dlp==2025.6.30
+
+# -----------------------------------------------------------------------------
+# 3. Production WSGI Server
+#    gunicorn — battle-tested, multi-worker WSGI server for Linux/Render.
+#               Configured via backend/gunicorn.conf.py.
+#               Not used on Windows (use waitress or run Flask dev server).
+# -----------------------------------------------------------------------------
+gunicorn==23.0.0
+
+# -----------------------------------------------------------------------------
+# 4. Environment Variable Management
+#    python-dotenv — loads variables from a .env file into os.environ at
+#                    startup (via load_dotenv() in app.py).
+#                    Safe to use in production; .env is gitignored.
+# -----------------------------------------------------------------------------
+python-dotenv==1.0.1
+
+# -----------------------------------------------------------------------------
+# 5. SSL / TLS Certificate Bundle
+#    certifi — provides Mozilla's CA certificate bundle so Python's ssl module
+#              can verify HTTPS connections on macOS python.org builds where
+#              the system CA store is not used automatically.
+#              Also fixes "CERTIFICATE_VERIFY_FAILED" errors with yt-dlp.
+# -----------------------------------------------------------------------------
+certifi==2025.4.26
+
+# -----------------------------------------------------------------------------
+# 6. API Rate Limiting  (Security)
+#    Flask-Limiter — decorator-based rate limiting per IP (or custom key).
+#                    Prevents abuse of /api/info and /api/download/start.
+#                    Default in-memory storage is fine for single-instance
+#                    Render deployments; swap to Redis for multi-instance.
+#
+#    limits — required dependency of Flask-Limiter; provides the parsing and
+#             evaluation of rate-limit strings like "10 per minute".
+# -----------------------------------------------------------------------------
+Flask-Limiter==3.7.0
+limits==3.13.0
