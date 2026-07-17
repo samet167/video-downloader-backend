@@ -1,11 +1,8 @@
 ###############################################################################
 # render.yaml — Render Blueprint for Flask Video Downloader Backend
 # ===========================================================================
-# Place this file at the ROOT of your backend repository.
-# Frontend is deployed separately on Vercel.
-#
-# CRITICAL: yt-dlp 2025+ REQUIRES Node.js to solve YouTube's n-parameter
-# throttle challenge. Without it → TypeError: 'NoneType' object is not callable
+# CRITICAL: yt-dlp 2025+ requires Node.js for YouTube n-parameter challenge.
+# We download the Node.js binary directly (no apt/NodeSource needed).
 ###############################################################################
 
 services:
@@ -16,30 +13,30 @@ services:
     region: singapore
 
     # ── Build ──────────────────────────────────────────────────────────────
-    # 1. Install FFmpeg (for merging video+audio)
-    # 2. Install Node.js 20 LTS from NodeSource (yt-dlp JS runtime)
-    #    - Default Ubuntu repos have outdated/missing nodejs
-    #    - NodeSource provides Node.js 20 LTS which yt-dlp supports
-    # 3. Verify node is accessible
-    # 4. Install Python deps + latest yt-dlp nightly
+    # Strategy: Download Node.js 20 LTS pre-built binary directly from
+    # nodejs.org. This bypasses all apt/NodeSource issues on Render.
+    # The binary is placed in /opt/node and added to PATH.
     buildCommand: |
-      apt-get update -qq
-      apt-get install -y --no-install-recommends ffmpeg ca-certificates curl gnupg
-      mkdir -p /etc/apt/keyrings
-      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
-      apt-get update -qq
-      apt-get install -y --no-install-recommends nodejs
-      echo "--- Node.js version ---"
+      set -e
+      echo "=== Installing FFmpeg ==="
+      apt-get update -qq && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl xz-utils
+      echo "=== Downloading Node.js 20 LTS binary ==="
+      curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -o /tmp/node.tar.xz
+      mkdir -p /opt/node
+      tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1
+      rm /tmp/node.tar.xz
+      ln -sf /opt/node/bin/node /usr/local/bin/node
+      ln -sf /opt/node/bin/npm /usr/local/bin/npm
+      ln -sf /opt/node/bin/npx /usr/local/bin/npx
+      echo "=== Verify Node.js ==="
       node --version
-      echo "--- npm version ---"
-      npm --version
-      echo "--- FFmpeg ---"
-      ffmpeg -version 2>&1 | head -1
+      echo "=== Installing Python deps ==="
       pip install --upgrade pip
       pip install -r requirements.txt
       pip install -U --pre "yt-dlp[default]"
+      echo "=== Verify yt-dlp ==="
       python -c "import yt_dlp; print('yt-dlp:', yt_dlp.version.__version__)"
+      echo "=== Build complete ==="
 
     # ── Start ──────────────────────────────────────────────────────────────
     startCommand: gunicorn -c gunicorn.conf.py app:app
@@ -60,7 +57,6 @@ services:
       - key: SECRET_KEY
         generateValue: true
 
-      # Set to your Vercel frontend URL after deploying frontend
       - key: FRONTEND_URL
         sync: false
 
@@ -78,3 +74,7 @@ services:
 
       - key: FFMPEG_PATH
         value: "/usr/bin/ffmpeg"
+
+      # Ensure Node.js is in PATH at runtime
+      - key: PATH
+        value: "/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
