@@ -127,6 +127,34 @@ def create_app() -> Flask:
         except Exception:
             pass
 
+        # Deno
+        def _get_deno_info():
+            try:
+                r = subprocess.run(["deno", "--version"], capture_output=True, text=True, timeout=5)
+                if r.returncode == 0:
+                    return r.stdout.strip().split("\n")[0]
+            except Exception:
+                pass
+            return "NOT FOUND"
+
+        # yt-dlp-ejs
+        def _get_ejs_info():
+            try:
+                import yt_dlp_ejs
+                return yt_dlp_ejs.__version__
+            except ImportError:
+                return "NOT INSTALLED"
+            except Exception as e:
+                return f"error: {e}"
+
+        # Resolved runtimes from downloader module
+        def _get_resolved_runtimes():
+            try:
+                from downloader import RESOLVED_NODEJS, RESOLVED_DENO
+                return {"node": RESOLVED_NODEJS or "None", "deno": RESOLVED_DENO or "None"}
+            except Exception as e:
+                return {"error": str(e)}
+
         # Temp dir
         tmp_dir = os.environ.get("TMP_DIR", "/tmp/videodl")
         tmp_exists = os.path.isdir(tmp_dir)
@@ -147,8 +175,13 @@ def create_app() -> Flask:
             "ffmpeg_version":   ffmpeg_version,
             "node_path":        nodejs_path,
             "node_version":     nodejs_version,
+            "deno_version":     _get_deno_info(),
+            "yt_dlp_ejs":       _get_ejs_info(),
+            "resolved_nodejs":  _get_resolved_runtimes().get("node"),
+            "resolved_deno":    _get_resolved_runtimes().get("deno"),
             "platform":         platform.platform(),
             "cwd":              os.getcwd(),
+            "path_env":         os.environ.get("PATH", ""),
             "temp_directory":   tmp_dir,
             "tmp_dir_exists":   tmp_exists,
             "tmp_dir_writable": tmp_writable,
