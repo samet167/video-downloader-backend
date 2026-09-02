@@ -292,7 +292,7 @@ def _base_ydl_opts() -> dict[str, Any]:
     # ── YouTube Cookie file (bypass bot detection on datacenter IPs) ───────
     # Set YOUTUBE_COOKIE_FILE env var to path of Netscape-format cookies.txt
     cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE")
-    if not cookie_file:
+    if not cookie_file or not Path(cookie_file).is_file():
         cookie_file = str(Path(__file__).parent / "cookies.txt")
         
     if cookie_file and Path(cookie_file).is_file():
