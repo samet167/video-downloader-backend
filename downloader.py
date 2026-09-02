@@ -276,7 +276,7 @@ def _base_ydl_opts() -> dict[str, Any]:
         # 'formats=missing_pot' = gracefully skip PO-token formats.
         "extractor_args": {
             "youtube": {
-                "player_client": ["default"],
+                "player_client": ["android", "ios", "mweb", "default"],
                 "formats":       ["missing_pot"],
             }
         },
