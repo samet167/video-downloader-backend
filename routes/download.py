@@ -134,10 +134,13 @@ def api_download_direct() -> tuple[Response, int] | Response:
 
     out_tmpl = str(tmp_sub / "%(title)s [%(resolution)s].%(ext)s")
 
-    # Format selector based on quality
+    # Format selector based on quality (mobile-friendly)
     fmt_selector = (
+        f"bestvideo[height<={max_height}][ext=mp4][vcodec~='avc1']+bestaudio[ext=m4a]/"
         f"bestvideo[height<={max_height}][ext=mp4]+bestaudio[ext=m4a]/"
+        f"bestvideo[height<={max_height}]+bestaudio[ext=m4a]/"
         f"bestvideo[height<={max_height}]+bestaudio/"
+        f"best[height<={max_height}][ext=mp4]/"
         f"best[height<={max_height}]/"
         "best"
     )
@@ -188,11 +191,19 @@ def api_download_direct() -> tuple[Response, int] | Response:
                 413,
             )
 
-        # Prepare filename for Content-Disposition
+        # Prepare filename for Content-Disposition (handle Unicode properly)
         safe_filename = sanitize_filename(raw_path.name)
         if not safe_filename.endswith(".mp4"):
             safe_filename += ".mp4"
 
+        # Encode filename for HTTP headers (RFC 5987)
+        from urllib.parse import quote
+        ascii_filename = safe_filename.encode('ascii', 'ignore').decode('ascii')
+        encoded_filename = quote(safe_filename.encode('utf-8'), safe='')
+        
+        # Use ASCII fallback for HTTP header, UTF-8 for display
+        download_name = ascii_filename if ascii_filename else f"video_{task_id}.mp4"
+        
         file_path = str(raw_path)
         file_size = raw_path.stat().st_size
 
@@ -216,16 +227,16 @@ def api_download_direct() -> tuple[Response, int] | Response:
             file_path,
             mimetype="video/mp4",
             as_attachment=True,
-            download_name=safe_filename,
+            download_name=download_name,
         )
 
         # Add Content-Length for progress tracking on client
         response.headers["Content-Length"] = str(file_size)
         # Encode filename for non-ASCII characters (RFC 5987)
-        encoded_name = quote(safe_filename)
+        # Use ASCII-only filename for the main parameter to avoid UnicodeEncodeError
         response.headers["Content-Disposition"] = (
-            f'attachment; filename="{safe_filename}"; '
-            f"filename*=UTF-8''{encoded_name}"
+            f'attachment; filename="{download_name}"; '
+            f"filename*=UTF-8''{encoded_filename}"
         )
         # CORS: expose headers the frontend needs
         response.headers["Access-Control-Expose-Headers"] = (

@@ -175,9 +175,13 @@ else:
     )
 
 # yt-dlp format selector: best video ≤ 1080p + best audio, merged to MP4
+# Mobile-friendly: prioritize H.264 baseline/main profile for better compatibility
 FORMAT_SELECTOR: str = (
+    f"bestvideo[height<={MAX_HEIGHT}][ext=mp4][vcodec~='avc1']+bestaudio[ext=m4a]/"
     f"bestvideo[height<={MAX_HEIGHT}][ext=mp4]+bestaudio[ext=m4a]/"
+    f"bestvideo[height<={MAX_HEIGHT}]+bestaudio[ext=m4a]/"
     f"bestvideo[height<={MAX_HEIGHT}]+bestaudio/"
+    f"best[height<={MAX_HEIGHT}][ext=mp4]/"
     f"best[height<={MAX_HEIGHT}]/"
     "best"
 )
@@ -287,7 +291,7 @@ def _base_ydl_opts() -> dict[str, Any]:
 
     # ── YouTube Cookie file (bypass bot detection on datacenter IPs) ───────
     # Set YOUTUBE_COOKIE_FILE env var to path of Netscape-format cookies.txt
-    cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE", "")
+    cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE", "cookies.txt")
     if cookie_file and Path(cookie_file).is_file():
         opts["cookiefile"] = cookie_file
         log.info("Using cookie file: %s", cookie_file)
@@ -498,6 +502,16 @@ def download_video(
         "progress_hooks":      [_progress_hook],
         "ignoreerrors":        False,
         "windowsfilenames":    True,
+        # Mobile-friendly FFmpeg options
+        "postprocessors": [
+            {
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            },
+            {
+                "key": "FFmpegFixup",
+            },
+        ],
     }
 
     try:
