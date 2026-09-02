@@ -291,10 +291,15 @@ def _base_ydl_opts() -> dict[str, Any]:
 
     # ── YouTube Cookie file (bypass bot detection on datacenter IPs) ───────
     # Set YOUTUBE_COOKIE_FILE env var to path of Netscape-format cookies.txt
-    cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE", "cookies.txt")
+    cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE")
+    if not cookie_file:
+        cookie_file = str(Path(__file__).parent / "cookies.txt")
+        
     if cookie_file and Path(cookie_file).is_file():
         opts["cookiefile"] = cookie_file
         log.info("Using cookie file: %s", cookie_file)
+    else:
+        log.warning("Cookie file not found at %s. YouTube bot detection might block downloads.", cookie_file)
 
     # ── PO Token provider (bgutil) ────────────────────────────────────────
     # bgutil-ytdlp-pot-provider script mode: auto-generates PO tokens
