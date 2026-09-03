@@ -259,7 +259,7 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
 
     # ── Proxy (Residential Proxy bypasses Datacenter bot detection) ─────────
     proxy_url = os.environ.get("YTDL_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
-    if proxy_url:
+    if proxy_url and not any(bad in proxy_url for bad in ["host:port", "webshare.io"]):
         opts["proxy"] = proxy_url
         clean_proxy = proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url
         log.info("Using Proxy for yt-dlp: %s", clean_proxy)
