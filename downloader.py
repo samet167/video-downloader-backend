@@ -294,16 +294,11 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
         log.info("Skipping YouTube cookies for non-YouTube platform.")
 
     # ── JS Runtime configuration ──────────────────────────────────────────
-    # Deno is the recommended runtime (enabled by default in yt-dlp).
-    # Format: dict of {runtime_name: {config_dict}}
+    # yt-dlp automatically discovers Node.js / Deno from system PATH.
     if RESOLVED_DENO:
         opts["js_runtimes"] = {"deno": {"path": RESOLVED_DENO}}
-        # Allow yt-dlp to download EJS challenge scripts from npm via Deno
-        opts["remote_components"] = ["ejs:npm"]
     elif RESOLVED_NODEJS:
         opts["js_runtimes"] = {"node": {"path": RESOLVED_NODEJS}}
-        # Fallback: download EJS scripts from GitHub for Node.js
-        opts["remote_components"] = ["ejs:github"]
 
     return opts
 
