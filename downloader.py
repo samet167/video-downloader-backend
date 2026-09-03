@@ -274,7 +274,8 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
             
         opts["extractor_args"] = {
             "youtube": {
-                "player_client": ["android", "ios", "mweb", "web", "default"],
+                "player_client": ["default", "mweb", "android", "ios"],
+                "formats":       ["missing_pot"],
             }
         }
         has_cookie = bool(cookie_file and Path(cookie_file).is_file())
