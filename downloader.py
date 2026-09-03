@@ -73,30 +73,20 @@ def _find_ffmpeg() -> str | None:
     """Return the FFmpeg path if it exists, else try to find it in PATH."""
     if FFMPEG_PATH and Path(FFMPEG_PATH).exists():
         return FFMPEG_PATH
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
     for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
         if Path(p).exists():
             return p
-    try:
-        result = subprocess.run(
-            ["which", "ffmpeg"], capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
     return None
 
 
 def _find_nodejs() -> str | None:
     """Return path to Node.js binary, or None if not available."""
-    try:
-        result = subprocess.run(
-            ["which", "node"], capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
+    found = shutil.which("node")
+    if found:
+        return found
     # Common paths (including Render persistent path)
     for p in [
         "/opt/render/project/src/.node/bin/node",
@@ -110,14 +100,9 @@ def _find_nodejs() -> str | None:
 
 def _find_deno() -> str | None:
     """Return path to Deno binary, or None if not available."""
-    try:
-        result = subprocess.run(
-            ["which", "deno"], capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
+    found = shutil.which("deno")
+    if found:
+        return found
     # Common paths (including Render persistent path)
     for p in [
         "/opt/render/project/src/.deno/deno",
@@ -287,17 +272,16 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
         if not cookie_file or not Path(cookie_file).is_file():
             cookie_file = str(Path(__file__).parent / "cookies.txt")
             
-        has_cookie = bool(cookie_file and Path(cookie_file).is_file())
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android", "ios", "mweb", "web", "default"],
+            }
+        }
         if has_cookie:
             opts["cookiefile"] = cookie_file
             log.info("Using cookie file for YouTube: %s", cookie_file)
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["web", "default"],
-                }
-            }
         else:
-            log.info("Running anonymous extraction for YouTube.")
+            log.info("Running anonymous extraction for YouTube with mobile/web clients.")
     else:
         log.info("Skipping YouTube cookies for non-YouTube platform.")
 
