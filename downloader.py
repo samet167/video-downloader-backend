@@ -272,18 +272,24 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
         if not cookie_file or not Path(cookie_file).is_file():
             cookie_file = str(Path(__file__).parent / "cookies.txt")
             
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["android", "ios"],
-                "player_skip":   ["web", "configs"],
-            }
-        }
         has_cookie = bool(cookie_file and Path(cookie_file).is_file())
         if has_cookie:
             opts["cookiefile"] = cookie_file
-            log.info("Using cookie file for YouTube: %s", cookie_file)
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["default", "web", "android", "ios"],
+                    "formats":       ["missing_pot"],
+                }
+            }
+            log.info("Using cookie file for YouTube with full formats: %s", cookie_file)
         else:
-            log.info("Running anonymous mobile extraction for YouTube (bypasses bot challenges).")
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios"],
+                    "player_skip":   ["web", "configs"],
+                }
+            }
+            log.info("Running anonymous mobile extraction for YouTube.")
     else:
         log.info("Skipping YouTube cookies for non-YouTube platform.")
 
