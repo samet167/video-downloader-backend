@@ -272,6 +272,13 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
     if RESOLVED_FFMPEG:
         opts["ffmpeg_location"] = RESOLVED_FFMPEG
 
+    # ── Proxy (Residential Proxy bypasses Datacenter bot detection) ─────────
+    proxy_url = os.environ.get("YTDL_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+    if proxy_url:
+        opts["proxy"] = proxy_url
+        clean_proxy = proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url
+        log.info("Using Proxy for yt-dlp: %s", clean_proxy)
+
     # ── YouTube Cookie file (bypass bot detection on datacenter IPs) ───────
     # Only attach cookies if YouTube to prevent breaking TikTok, Instagram, etc.
     is_youtube = not url or any(yt in url for yt in ["youtube.com", "youtu.be"])
@@ -349,6 +356,9 @@ def _get_tiktok_info(url: str) -> dict[str, Any] | None:
             "--no-playlist",
             clean_url
         ]
+        proxy_url = os.environ.get("YTDL_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+        if proxy_url:
+            cmd.extend(["--proxy", proxy_url])
         log.info("_get_tiktok_info: fetching & caching via yt-dlp chrome impersonation: %s", clean_url)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if res.returncode != 0 or not res.stdout.strip():

@@ -156,6 +156,9 @@ def api_download_direct() -> tuple[Response, int] | Response:
                 "--no-playlist",
                 clean_url
             ]
+            proxy_url = os.environ.get("YTDL_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+            if proxy_url:
+                cmd.extend(["--proxy", proxy_url])
             log.info("[/api/download] direct TikTok download via yt-dlp chrome impersonation: %s", clean_url)
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if res.returncode == 0:
