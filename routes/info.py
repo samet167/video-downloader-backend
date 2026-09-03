@@ -104,8 +104,25 @@ def normalize_url(url: str) -> str:
 
     # YouTube / YouTube Music
     if re.search(r"(youtube\.com|music\.youtube\.com)", host):
-        _REMOVE = {"si", "feature", "pp", "ab_channel", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "igshid"}
-        qs      = parse_qs(parsed.query)
+        qs = parse_qs(parsed.query)
+
+        # Convert YouTube Mix playlist (/playlist?list=RD<video_id>) to /watch?v=<video_id>
+        if parsed.path.startswith("/playlist"):
+            list_id = qs.get("list", [""])[0]
+            if list_id.startswith("RD") and len(list_id) >= 13:
+                # Video ID is usually the 11 characters right after 'RD'
+                extracted_vid = list_id[2:13]
+                return f"https://www.youtube.com/watch?v={extracted_vid}"
+
+        _REMOVE = {
+            "si", "feature", "pp", "ab_channel", "playnext",
+            "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+            "fbclid", "igshid"
+        }
+        # If it's a specific video (has 'v'), also remove playlist parameters so yt-dlp only fetches that video
+        if "v" in qs:
+            _REMOVE.update({"list", "index", "start_radio"})
+
         cleaned = {k: v[0] for k, v in qs.items() if k not in _REMOVE}
         return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(cleaned), ""))
 

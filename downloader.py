@@ -284,6 +284,7 @@ def _base_ydl_opts() -> dict[str, Any]:
         # ── Misc ──────────────────────────────────────────────────────────
         "geo_bypass":         True,
         "no_check_formats":   True,
+        "noplaylist":         True,
     }
 
     if RESOLVED_FFMPEG:
