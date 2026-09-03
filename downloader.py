@@ -330,8 +330,51 @@ def _url_cache_path(url: str) -> Path:
     return Path("/tmp/videodl") / f"tt_cache_{h}.mp4"
 
 
+def _get_tiktok_api_fallback(clean_url: str, cache_path: Path) -> dict[str, Any] | None:
+    """Fallback TikTok downloader using direct mobile stream API."""
+    try:
+        import urllib.request
+        import json
+        req_url = f"https://www.tikwm.com/api/?url={clean_url}"
+        req = urllib.request.Request(req_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        if data.get("code") == 0 and data.get("data"):
+            d = data["data"]
+            play_url = d.get("play") or d.get("wmplay")
+            if play_url:
+                v_req = urllib.request.Request(play_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(v_req, timeout=25) as vr, open(cache_path, "wb") as f:
+                    f.write(vr.read())
+            file_size = cache_path.stat().st_size if cache_path.is_file() else (d.get("size") or 0)
+            duration = int(d.get("duration") or 0)
+            dur_str = f"{duration // 60}:{duration % 60:02d}" if duration else None
+            return {
+                "title": d.get("title") or "TikTok Video",
+                "thumbnail": d.get("cover") or "",
+                "duration": duration,
+                "duration_str": dur_str,
+                "uploader": d.get("author", {}).get("nickname") or "TikTok",
+                "webpage_url": clean_url,
+                "formats": [
+                    {
+                        "format_id": "best",
+                        "resolution": "720x1280",
+                        "quality": "HD Original",
+                        "ext": "mp4",
+                        "filesize": file_size,
+                        "height": 1080,
+                    }
+                ],
+                "cached_file": str(cache_path) if cache_path.is_file() else None,
+            }
+    except Exception as exc:
+        log.warning("_get_tiktok_api_fallback failed: %s", exc)
+        return None
+
+
 def _get_tiktok_info(url: str) -> dict[str, Any] | None:
-    """Extract TikTok video metadata & pre-cache video using yt-dlp chrome impersonation."""
+    """Extract TikTok video metadata & pre-cache video using yt-dlp chrome impersonation with API fallback."""
     try:
         import subprocess
         import json
@@ -362,12 +405,12 @@ def _get_tiktok_info(url: str) -> dict[str, Any] | None:
         log.info("_get_tiktok_info: fetching & caching via yt-dlp chrome impersonation: %s", clean_url)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if res.returncode != 0 or not res.stdout.strip():
-            log.warning("_get_tiktok_info failed with code %s: %s", res.returncode, res.stderr[:200])
-            return None
+            log.warning("_get_tiktok_info yt-dlp failed with code %s. Trying API fallback...", res.returncode)
+            return _get_tiktok_api_fallback(clean_url, cache_path)
 
         lines = [l for l in res.stdout.split("\n") if l.strip().startswith("{")]
         if not lines:
-            return None
+            return _get_tiktok_api_fallback(clean_url, cache_path)
         d = json.loads(lines[0])
 
         title = d.get("title") or "TikTok Video"
@@ -406,7 +449,7 @@ def _get_tiktok_info(url: str) -> dict[str, Any] | None:
         }
     except Exception as exc:
         log.warning("_get_tiktok_info error: %s", exc)
-        return None
+        return _get_tiktok_api_fallback(clean_url, cache_path)
 
 
 def get_video_info(url: str) -> dict[str, Any]:
@@ -421,6 +464,7 @@ def get_video_info(url: str) -> dict[str, Any]:
         if tt_info:
             log.info("get_video_info: successfully resolved TikTok URL: %s", tt_info["title"])
             return tt_info
+        raise ValueError("TikTok is temporarily rate limiting this video. Please try again in 5 seconds.")
 
     opts = {
         **_base_ydl_opts(url),
