@@ -28,7 +28,7 @@ graceful_timeout = 30
 
 # ── Logging ───────────────────────────────────────────────────────────
 accesslog  = "-"    # stdout → captured by Render logs
-errorlog   = "-"    # stderr → captured by Render logs
+errorlog   = "-"    # stderr → captured by 
 loglevel   = "info"
 access_log_format = '%(h)s "%(r)s" %(s)s %(b)s %(D)sµs'
 
