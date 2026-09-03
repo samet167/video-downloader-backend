@@ -277,6 +277,7 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
                 "player_client": ["android", "ios", "mweb", "web", "default"],
             }
         }
+        has_cookie = bool(cookie_file and Path(cookie_file).is_file())
         if has_cookie:
             opts["cookiefile"] = cookie_file
             log.info("Using cookie file for YouTube: %s", cookie_file)
