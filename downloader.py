@@ -263,24 +263,6 @@ def _base_ydl_opts() -> dict[str, Any]:
         "file_access_retries": 5,
         "extractor_retries":  5,
 
-        # ── HTTP headers (mimic real browser) ─────────────────────────────
-        "http_headers": {
-            "User-Agent":      _USER_AGENT,
-            "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Sec-Fetch-Mode":  "navigate",
-        },
-
-        # ── YouTube extractor ─────────────────────────────────────────────
-        # 'default' = auto-negotiate (uses JS runtime for n-param).
-        # 'formats=missing_pot' = gracefully skip PO-token formats.
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "ios", "mweb", "default"],
-                "formats":       ["missing_pot"],
-            }
-        },
-
         # ── Misc ──────────────────────────────────────────────────────────
         "geo_bypass":         True,
         "no_check_formats":   True,
@@ -300,20 +282,13 @@ def _base_ydl_opts() -> dict[str, Any]:
     if has_cookie:
         opts["cookiefile"] = cookie_file
         log.info("Using cookie file: %s", cookie_file)
-        # Web cookies MUST use browser clients (web/mweb). Android/iOS clients reject web cookies with bot errors!
-        youtube_clients = ["web", "mweb", "default"]
-    else:
-        log.warning("Cookie file not found at %s. Using mobile clients for anonymous bypass.", cookie_file)
-        # Anonymous extraction on datacenter IPs works best with mobile clients
-        youtube_clients = ["android", "ios", "mweb", "default"]
-
-    # ── YouTube extractor ─────────────────────────────────────────────
-    opts["extractor_args"] = {
-        "youtube": {
-            "player_client": youtube_clients,
-            "formats":       ["missing_pot"],
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["web", "default"],
+            }
         }
-    }
+    else:
+        log.info("Running anonymous extraction (default yt-dlp auto-negotiation).")
 
     # ── JS Runtime configuration ──────────────────────────────────────────
     # Deno is the recommended runtime (enabled by default in yt-dlp).
