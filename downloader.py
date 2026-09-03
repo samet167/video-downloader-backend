@@ -315,8 +315,16 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
 # TikTok Extractor Helper
 # ─────────────────────────────────────────────────────────────────────────────
 
+import hashlib
+
+def _url_cache_path(url: str) -> Path:
+    clean = re.sub(r"\?.*$", "", url).strip()
+    h = hashlib.sha256(clean.encode()).hexdigest()[:16]
+    return Path("/tmp/videodl") / f"tt_cache_{h}.mp4"
+
+
 def _get_tiktok_info(url: str) -> dict[str, Any] | None:
-    """Extract TikTok video metadata reliably using yt-dlp with Chrome impersonation."""
+    """Extract TikTok video metadata & pre-cache video using yt-dlp chrome impersonation."""
     try:
         import subprocess
         import json
@@ -329,36 +337,53 @@ def _get_tiktok_info(url: str) -> dict[str, Any] | None:
         if not Path(ytdlp_bin).is_file():
             ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
 
+        cache_path = _url_cache_path(clean_url)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        out_tmpl = str(cache_path.parent / f"{cache_path.stem}.%(ext)s")
+
         cmd = [
             ytdlp_bin,
             "--impersonate", "chrome",
-            "--dump-json",
+            "--print-json",
+            "-o", out_tmpl,
             "--no-playlist",
             clean_url
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        log.info("_get_tiktok_info: fetching & caching via yt-dlp chrome impersonation: %s", clean_url)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if res.returncode != 0 or not res.stdout.strip():
             log.warning("_get_tiktok_info failed with code %s: %s", res.returncode, res.stderr[:200])
             return None
 
-        d = json.loads(res.stdout)
+        lines = [l for l in res.stdout.split("\n") if l.strip().startswith("{")]
+        if not lines:
+            return None
+        d = json.loads(lines[0])
+
         title = d.get("title") or "TikTok Video"
         uploader = d.get("uploader") or d.get("creator") or "TikTok"
         duration = int(d.get("duration") or 0)
         dur_str = f"{duration // 60}:{duration % 60:02d}" if duration else None
         thumbnail = d.get("thumbnail") or ""
-        
+
+        # Normalize cached file name if needed
+        generated = list(cache_path.parent.glob(f"{cache_path.stem}.*"))
+        if generated and generated[0] != cache_path:
+            generated[0].rename(cache_path)
+
+        file_size = cache_path.stat().st_size if cache_path.is_file() else (d.get("filesize") or 0)
+
         formats = [
             {
                 "format_id": "best",
                 "resolution": f"{d.get('width', 720)}x{d.get('height', 1280)}",
                 "quality": "HD Original",
                 "ext": "mp4",
-                "filesize": d.get("filesize") or d.get("filesize_approx") or 0,
+                "filesize": file_size,
                 "height": d.get("height", 1080),
             }
         ]
-        
+
         return {
             "title": title,
             "thumbnail": thumbnail,
@@ -367,6 +392,7 @@ def _get_tiktok_info(url: str) -> dict[str, Any] | None:
             "uploader": uploader,
             "webpage_url": clean_url,
             "formats": formats,
+            "cached_file": str(cache_path) if cache_path.is_file() else None,
         }
     except Exception as exc:
         log.warning("_get_tiktok_info error: %s", exc)

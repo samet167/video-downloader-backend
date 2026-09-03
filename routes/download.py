@@ -137,25 +137,34 @@ def api_download_direct() -> tuple[Response, int] | Response:
     raw_path = None
     if "tiktok.com" in url:
         clean_url = re.sub(r"\?.*$", "", url)
-        import subprocess, sys, shutil
-        ytdlp_bin = sys.executable.replace("python3", "yt-dlp").replace("python", "yt-dlp")
-        if not Path(ytdlp_bin).is_file():
-            ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
+        from downloader import _url_cache_path
+        cached = _url_cache_path(clean_url)
+        if cached.is_file() and cached.stat().st_size > 1000:
+            log.info("[/api/download] using pre-cached TikTok video: %s (%.1f MB)", cached, cached.stat().st_size / 1024 / 1024)
+            raw_path = tmp_sub / f"tiktok_{task_id}.mp4"
+            shutil.copy2(str(cached), str(raw_path))
+        else:
+            import subprocess, sys
+            ytdlp_bin = sys.executable.replace("python3", "yt-dlp").replace("python", "yt-dlp")
+            if not Path(ytdlp_bin).is_file():
+                ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
 
-        cmd = [
-            ytdlp_bin,
-            "--impersonate", "chrome",
-            "-f", "best",
-            "-o", out_tmpl,
-            "--no-playlist",
-            clean_url
-        ]
-        log.info("[/api/download] direct TikTok download via yt-dlp chrome impersonation: %s", clean_url)
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if res.returncode == 0:
-            mp4s = sorted(tmp_sub.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if mp4s:
-                raw_path = mp4s[0]
+            cmd = [
+                ytdlp_bin,
+                "--impersonate", "chrome",
+                "-o", out_tmpl,
+                "--no-playlist",
+                clean_url
+            ]
+            log.info("[/api/download] direct TikTok download via yt-dlp chrome impersonation: %s", clean_url)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if res.returncode == 0:
+                mp4s = sorted(tmp_sub.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if mp4s:
+                    raw_path = mp4s[0]
+            else:
+                shutil.rmtree(tmp_sub, ignore_errors=True)
+                return _err(f"TikTok download failed: {res.stderr[:200]}", 422)
 
     try:
         if raw_path is None:
