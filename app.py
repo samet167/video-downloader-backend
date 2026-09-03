@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import subprocess
 import sys
 
@@ -47,36 +48,36 @@ def create_app() -> Flask:
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key-change-in-prod")
 
     # ── CORS ──────────────────────────────────────────────────────────────
-    frontend_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:5500")
-    allowed_origins = list(dict.fromkeys([
-        frontend_url,
-        "http://127.0.0.1:5500",
-        "http://localhost:5500",
-        "http://127.0.0.1:5000",
-        "http://localhost:5000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
-        "http://127.0.0.1:8080",
-        "http://localhost:8080",
-        r"^https://.*\.pages\.dev$",
-        r"^https://.*\.vercel\.app$",
-    ]))
-
     CORS(
         app,
-        resources={r"/*": {"origins": allowed_origins}},
+        resources={r"/*": {"origins": "*"}},
         supports_credentials=False,
         allow_headers=["Content-Type", "Authorization", "Cache-Control"],
         expose_headers=["Content-Disposition", "Content-Type", "Cache-Control", "Content-Length"],
         methods=["GET", "POST", "OPTIONS"],
     )
-    log.info("CORS enabled for origins: %s", allowed_origins)
+    log.info("CORS enabled for all origins (*)")
 
     # ── Blueprints ─────────────────────────────────────────────────────────
     app.register_blueprint(info_bp)
     app.register_blueprint(download_bp)
 
-    # ── Health check ───────────────────────────────────────────────────────
+    # ── Root & Health check ────────────────────────────────────────────────
+    @app.route("/", methods=["GET"])
+    @app.route("/api", methods=["GET"])
+    def root():
+        return jsonify({
+            "status": "ok",
+            "service": "video-downloader",
+            "message": "Video Downloader API is running",
+            "endpoints": {
+                "health": "/health",
+                "debug": "/debug",
+                "info": "/api/info",
+                "download": "/api/download"
+            }
+        }), 200
+
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok", "service": "video-downloader"}), 200
@@ -98,12 +99,9 @@ def create_app() -> Flask:
         if env_ffmpeg and os.path.isfile(env_ffmpeg):
             ffmpeg_path = env_ffmpeg
         else:
-            try:
-                r = subprocess.run(["which", "ffmpeg"], capture_output=True, text=True, timeout=5)
-                if r.returncode == 0 and r.stdout.strip():
-                    ffmpeg_path = r.stdout.strip()
-            except Exception:
-                pass
+            found_ffmpeg = shutil.which("ffmpeg")
+            if found_ffmpeg:
+                ffmpeg_path = found_ffmpeg
             if ffmpeg_path == "NOT FOUND":
                 for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]:
                     if os.path.isfile(p):
@@ -125,9 +123,9 @@ def create_app() -> Flask:
             r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
             if r.returncode == 0 and r.stdout.strip():
                 nodejs_version = r.stdout.strip()
-                rp = subprocess.run(["which", "node"], capture_output=True, text=True, timeout=5)
-                if rp.returncode == 0:
-                    nodejs_path = rp.stdout.strip()
+                found_node = shutil.which("node")
+                if found_node:
+                    nodejs_path = found_node
         except Exception:
             pass
 
