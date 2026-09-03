@@ -134,38 +134,64 @@ def api_download_direct() -> tuple[Response, int] | Response:
 
     out_tmpl = str(tmp_sub / "%(title)s [%(resolution)s].%(ext)s")
 
-    # Format selector based on quality (mobile-friendly)
-    fmt_selector = (
-        f"bestvideo[height<={max_height}][ext=mp4][vcodec~='avc1']+bestaudio[ext=m4a]/"
-        f"bestvideo[height<={max_height}][ext=mp4]+bestaudio[ext=m4a]/"
-        f"bestvideo[height<={max_height}]+bestaudio[ext=m4a]/"
-        f"bestvideo[height<={max_height}]+bestaudio/"
-        f"best[height<={max_height}][ext=mp4]/"
-        f"best[height<={max_height}]/"
-        "best"
-    )
+    raw_path = None
+    if "tiktok.com" in url:
+        clean_url = re.sub(r"\?.*$", "", url)
+        import subprocess, sys, shutil
+        ytdlp_bin = sys.executable.replace("python3", "yt-dlp").replace("python", "yt-dlp")
+        if not Path(ytdlp_bin).is_file():
+            ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
 
-    # Use the same base options as the downloader engine
-    # (includes fixed player_client, User-Agent, retries, etc.)
-    ydl_opts = {
-        **_base_ydl_opts(),
-        "format":              fmt_selector,
-        "merge_output_format": "mp4",
-        "outtmpl":            out_tmpl,
-        "ignoreerrors":       False,
-        "windowsfilenames":   True,
-    }
+        cmd = [
+            ytdlp_bin,
+            "--impersonate", "chrome",
+            "-f", "best",
+            "-o", out_tmpl,
+            "--no-playlist",
+            clean_url
+        ]
+        log.info("[/api/download] direct TikTok download via yt-dlp chrome impersonation: %s", clean_url)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if res.returncode == 0:
+            mp4s = sorted(tmp_sub.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if mp4s:
+                raw_path = mp4s[0]
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        if raw_path is None:
+            # Format selector based on quality (mobile-friendly)
+            if "tiktok.com" in url or "instagram.com" in url:
+                fmt_selector = "best"
+            else:
+                fmt_selector = (
+                    f"bestvideo[height<={max_height}][ext=mp4][vcodec~='avc1']+bestaudio[ext=m4a]/"
+                    f"bestvideo[height<={max_height}][ext=mp4]+bestaudio[ext=m4a]/"
+                    f"bestvideo[height<={max_height}]+bestaudio[ext=m4a]/"
+                    f"bestvideo[height<={max_height}]+bestaudio/"
+                    f"best[height<={max_height}][ext=mp4]/"
+                    f"best[height<={max_height}]/"
+                    "best"
+                )
 
-        if info is None:
-            shutil.rmtree(tmp_sub, ignore_errors=True)
-            return _err("yt-dlp returned no info after download.", 422)
+            # Use the same base options as the downloader engine
+            ydl_opts = {
+                **_base_ydl_opts(url),
+                "format":              fmt_selector,
+                "merge_output_format": "mp4",
+                "outtmpl":            out_tmpl,
+                "ignoreerrors":       False,
+                "windowsfilenames":   True,
+            }
 
-        # Locate the output file
-        raw_path = Path(ydl.prepare_filename(info))
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+
+            if info is None:
+                shutil.rmtree(tmp_sub, ignore_errors=True)
+                return _err("yt-dlp returned no info after download.", 422)
+
+            # Locate the output file
+            raw_path = Path(ydl.prepare_filename(info))
         if not raw_path.exists():
             raw_path = raw_path.with_suffix(".mp4")
 

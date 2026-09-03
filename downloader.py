@@ -233,7 +233,7 @@ _USER_AGENT = (
 )
 
 
-def _base_ydl_opts() -> dict[str, Any]:
+def _base_ydl_opts(url: str = "") -> dict[str, Any]:
     """
     Base yt-dlp options for headless server (Render).
 
@@ -273,22 +273,26 @@ def _base_ydl_opts() -> dict[str, Any]:
         opts["ffmpeg_location"] = RESOLVED_FFMPEG
 
     # ── YouTube Cookie file (bypass bot detection on datacenter IPs) ───────
-    # Set YOUTUBE_COOKIE_FILE env var to path of Netscape-format cookies.txt
-    cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE")
-    if not cookie_file or not Path(cookie_file).is_file():
-        cookie_file = str(Path(__file__).parent / "cookies.txt")
-        
-    has_cookie = bool(cookie_file and Path(cookie_file).is_file())
-    if has_cookie:
-        opts["cookiefile"] = cookie_file
-        log.info("Using cookie file: %s", cookie_file)
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": ["web", "default"],
+    # Only attach cookies if YouTube to prevent breaking TikTok, Instagram, etc.
+    is_youtube = not url or any(yt in url for yt in ["youtube.com", "youtu.be"])
+    if is_youtube:
+        cookie_file = os.environ.get("YOUTUBE_COOKIE_FILE")
+        if not cookie_file or not Path(cookie_file).is_file():
+            cookie_file = str(Path(__file__).parent / "cookies.txt")
+            
+        has_cookie = bool(cookie_file and Path(cookie_file).is_file())
+        if has_cookie:
+            opts["cookiefile"] = cookie_file
+            log.info("Using cookie file for YouTube: %s", cookie_file)
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["web", "default"],
+                }
             }
-        }
+        else:
+            log.info("Running anonymous extraction for YouTube.")
     else:
-        log.info("Running anonymous extraction (default yt-dlp auto-negotiation).")
+        log.info("Skipping YouTube cookies for non-YouTube platform.")
 
     # ── JS Runtime configuration ──────────────────────────────────────────
     # Deno is the recommended runtime (enabled by default in yt-dlp).
@@ -308,6 +312,66 @@ def _base_ydl_opts() -> dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 # get_video_info — metadata only, no download
 # ─────────────────────────────────────────────────────────────────────────────
+# TikTok Extractor Helper
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_tiktok_info(url: str) -> dict[str, Any] | None:
+    """Extract TikTok video metadata reliably using yt-dlp with Chrome impersonation."""
+    try:
+        import subprocess
+        import json
+        import shutil
+        import sys
+
+        clean_url = re.sub(r"\?.*$", "", url)
+        # Find yt-dlp binary (virtualenv or system)
+        ytdlp_bin = sys.executable.replace("python3", "yt-dlp").replace("python", "yt-dlp")
+        if not Path(ytdlp_bin).is_file():
+            ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
+
+        cmd = [
+            ytdlp_bin,
+            "--impersonate", "chrome",
+            "--dump-json",
+            "--no-playlist",
+            clean_url
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        if res.returncode != 0 or not res.stdout.strip():
+            log.warning("_get_tiktok_info failed with code %s: %s", res.returncode, res.stderr[:200])
+            return None
+
+        d = json.loads(res.stdout)
+        title = d.get("title") or "TikTok Video"
+        uploader = d.get("uploader") or d.get("creator") or "TikTok"
+        duration = int(d.get("duration") or 0)
+        dur_str = f"{duration // 60}:{duration % 60:02d}" if duration else None
+        thumbnail = d.get("thumbnail") or ""
+        
+        formats = [
+            {
+                "format_id": "best",
+                "resolution": f"{d.get('width', 720)}x{d.get('height', 1280)}",
+                "quality": "HD Original",
+                "ext": "mp4",
+                "filesize": d.get("filesize") or d.get("filesize_approx") or 0,
+                "height": d.get("height", 1080),
+            }
+        ]
+        
+        return {
+            "title": title,
+            "thumbnail": thumbnail,
+            "duration": duration,
+            "duration_str": dur_str,
+            "uploader": uploader,
+            "webpage_url": clean_url,
+            "formats": formats,
+        }
+    except Exception as exc:
+        log.warning("_get_tiktok_info error: %s", exc)
+        return None
+
 
 def get_video_info(url: str) -> dict[str, Any]:
     """
@@ -316,8 +380,14 @@ def get_video_info(url: str) -> dict[str, Any]:
     Raises:
         ValueError: on yt-dlp error or validation failure
     """
+    if "tiktok.com" in url:
+        tt_info = _get_tiktok_info(url)
+        if tt_info:
+            log.info("get_video_info: successfully resolved TikTok URL: %s", tt_info["title"])
+            return tt_info
+
     opts = {
-        **_base_ydl_opts(),
+        **_base_ydl_opts(url),
         "skip_download": True,
         "ignoreerrors":  False,
     }
@@ -454,11 +524,63 @@ def download_video(
         "filename": "", "error": None,
     })
 
-    fmt = (
-        f"{format_id}+bestaudio/best[height<={MAX_HEIGHT}]/best"
-        if format_id
-        else FORMAT_SELECTOR
-    )
+    if "tiktok.com" in url or "instagram.com" in url:
+        fmt = "best"
+    elif format_id:
+        fmt = f"{format_id}+bestaudio/best[height<={MAX_HEIGHT}]/best"
+    else:
+        fmt = FORMAT_SELECTOR
+
+    if "tiktok.com" in url:
+        clean_url = re.sub(r"\?.*$", "", url)
+        tmp_sub = save_dir / f".vdl_{task_id}"
+        tmp_sub.mkdir(exist_ok=True)
+        out_tmpl = str(tmp_sub / "%(title)s [%(resolution)s].%(ext)s")
+        
+        _set_progress(task_id, {
+            "status": "downloading", "percent": 30,
+            "speed": "2 MB/s", "eta": "1s", "filesize": "",
+            "filename": "", "filepath": "",
+            "save_dir": str(save_dir), "os_type": os_type, "error": None,
+        })
+        
+        import subprocess, sys, shutil
+        ytdlp_bin = sys.executable.replace("python3", "yt-dlp").replace("python", "yt-dlp")
+        if not Path(ytdlp_bin).is_file():
+            ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
+
+        cmd = [
+            ytdlp_bin,
+            "--impersonate", "chrome",
+            "-f", "best",
+            "-o", out_tmpl,
+            "--no-playlist",
+            clean_url
+        ]
+        log.info("download_video: downloading TikTok via yt-dlp chrome impersonation: %s", clean_url)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if res.returncode != 0:
+            log.error("TikTok download subprocess error: %s", res.stderr)
+            raise ValueError(f"TikTok download failed: {res.stderr[:200]}")
+            
+        mp4s = sorted(tmp_sub.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not mp4s:
+            raise ValueError("No video file generated for TikTok download.")
+            
+        raw_path = mp4s[0]
+        final_path = unique_path(save_dir, raw_path.name)
+        shutil.move(str(raw_path), str(final_path))
+        shutil.rmtree(tmp_sub, ignore_errors=True)
+        
+        size_mb = final_path.stat().st_size / (1024 * 1024)
+        result = {
+            "status": "done", "percent": 100,
+            "speed": "", "eta": "", "filesize": f"{size_mb:.1f} MB",
+            "filename": final_path.name, "filepath": str(final_path),
+            "save_dir": str(save_dir), "os_type": os_type, "error": None,
+        }
+        _set_progress(task_id, result)
+        return {"path": str(final_path), "filename": final_path.name, "save_dir": str(save_dir), "os_type": os_type}
 
     tmp_sub  = save_dir / f".vdl_{task_id}"
     tmp_sub.mkdir(exist_ok=True)
@@ -493,7 +615,7 @@ def download_video(
             })
 
     ydl_opts: dict[str, Any] = {
-        **_base_ydl_opts(),
+        **_base_ydl_opts(url),
         "format":              fmt,
         "merge_output_format": "mp4",
         "outtmpl":             out_tmpl,
@@ -505,9 +627,6 @@ def download_video(
             {
                 "key": "FFmpegVideoConvertor",
                 "preferedformat": "mp4",
-            },
-            {
-                "key": "FFmpegFixup",
             },
         ],
     }
