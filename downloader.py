@@ -281,13 +281,7 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
         has_cookie = bool(cookie_file and Path(cookie_file).is_file())
         if has_cookie:
             opts["cookiefile"] = cookie_file
-            opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["web", "default", "visionos"],
-                    "formats":       ["missing_pot"],
-                }
-            }
-            log.info("Using cookie file for YouTube with full formats: %s", cookie_file)
+            log.info("Using cookie file for YouTube: %s", cookie_file)
         else:
             opts["extractor_args"] = {
                 "youtube": {
