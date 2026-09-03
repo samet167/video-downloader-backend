@@ -296,26 +296,24 @@ def _base_ydl_opts() -> dict[str, Any]:
     if not cookie_file or not Path(cookie_file).is_file():
         cookie_file = str(Path(__file__).parent / "cookies.txt")
         
-    if cookie_file and Path(cookie_file).is_file():
+    has_cookie = bool(cookie_file and Path(cookie_file).is_file())
+    if has_cookie:
         opts["cookiefile"] = cookie_file
         log.info("Using cookie file: %s", cookie_file)
+        # Web cookies MUST use browser clients (web/mweb). Android/iOS clients reject web cookies with bot errors!
+        youtube_clients = ["web", "mweb", "default"]
     else:
-        log.warning("Cookie file not found at %s. YouTube bot detection might block downloads.", cookie_file)
+        log.warning("Cookie file not found at %s. Using mobile clients for anonymous bypass.", cookie_file)
+        # Anonymous extraction on datacenter IPs works best with mobile clients
+        youtube_clients = ["android", "ios", "mweb", "default"]
 
-    # ── PO Token provider (bgutil) ────────────────────────────────────────
-    # bgutil-ytdlp-pot-provider script mode: auto-generates PO tokens
-    # to bypass "Sign in to confirm you're not a bot" on datacenter IPs.
-    pot_server_home = os.environ.get(
-        "POT_SERVER_HOME",
-        "/opt/render/project/src/pot-provider/server"
-    )
-    if Path(pot_server_home).is_dir():
-        # Tell the plugin where the server scripts are located
-        ea = opts.get("extractor_args", {})
-        ea.setdefault("youtubepot-bgutilscript", {})
-        ea["youtubepot-bgutilscript"]["server_home"] = [pot_server_home]
-        opts["extractor_args"] = ea
-        log.info("POT provider (bgutil script) configured: %s", pot_server_home)
+    # ── YouTube extractor ─────────────────────────────────────────────
+    opts["extractor_args"] = {
+        "youtube": {
+            "player_client": youtube_clients,
+            "formats":       ["missing_pot"],
+        }
+    }
 
     # ── JS Runtime configuration ──────────────────────────────────────────
     # Deno is the recommended runtime (enabled by default in yt-dlp).
@@ -351,13 +349,32 @@ def get_video_info(url: str) -> dict[str, Any]:
 
     log.info("get_video_info: url=%s", url)
 
+    info = None
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as exc:
         msg = re.sub(r"^ERROR:\s*", "", str(exc)).strip()
-        log.error("get_video_info DownloadError: %s", msg)
-        raise ValueError(msg) from exc
+        # If bot detection or cookie error occurred and cookies were used, RETRY WITHOUT COOKIES using mobile client
+        if opts.get("cookiefile") and any(phrase in msg.lower() for phrase in ["bot", "cookies", "sign in", "format is not available"]):
+            log.warning("get_video_info encountered cookie/bot issue (%s). Retrying WITHOUT cookies...", msg)
+            fallback_opts = dict(opts)
+            fallback_opts.pop("cookiefile", None)
+            fallback_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb", "default"],
+                    "formats":       ["missing_pot"],
+                }
+            }
+            try:
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                    info = ydl_fb.extract_info(url, download=False)
+            except Exception as fb_exc:
+                log.error("Fallback without cookies also failed: %s", fb_exc)
+                raise ValueError(msg) from exc
+        else:
+            log.error("get_video_info DownloadError: %s", msg)
+            raise ValueError(msg) from exc
     except TypeError as exc:
         # Capture full traceback for debugging
         import traceback
@@ -523,6 +540,22 @@ def download_video(
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
+    except yt_dlp.utils.DownloadError as exc:
+        msg = str(exc)
+        if ydl_opts.get("cookiefile") and any(phrase in msg.lower() for phrase in ["bot", "cookies", "sign in", "format is not available"]):
+            log.warning("download_video encountered cookie/bot issue (%s). Retrying WITHOUT cookies...", msg)
+            fb_opts = dict(ydl_opts)
+            fb_opts.pop("cookiefile", None)
+            fb_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb", "default"],
+                    "formats":       ["missing_pot"],
+                }
+            }
+            with yt_dlp.YoutubeDL(fb_opts) as ydl_fb:
+                info = ydl_fb.extract_info(url, download=True)
+        else:
+            raise
 
         if info is None:
             raise ValueError("yt-dlp returned no info after download.")
