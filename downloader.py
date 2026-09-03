@@ -252,12 +252,6 @@ def _base_ydl_opts(url: str = "") -> dict[str, Any]:
         "geo_bypass":         True,
         "no_check_formats":   True,
         "noplaylist":         True,
-        "http_headers": {
-            "User-Agent": _USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Sec-Fetch-Mode": "navigate",
-        },
     }
 
     if RESOLVED_FFMPEG:
