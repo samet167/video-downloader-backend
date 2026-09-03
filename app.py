@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -177,6 +178,9 @@ def create_app() -> Flask:
             "ffmpeg_version":   ffmpeg_version,
             "node_path":        nodejs_path,
             "node_version":     nodejs_version,
+            "cookie_path":      str(Path(__file__).parent / "cookies.txt"),
+            "cookie_exists":    Path(__file__).parent.joinpath("cookies.txt").is_file(),
+            "cookie_size":      Path(__file__).parent.joinpath("cookies.txt").stat().st_size if Path(__file__).parent.joinpath("cookies.txt").is_file() else 0,
             "deno_version":     _get_deno_info(),
             "yt_dlp_ejs":       _get_ejs_info(),
             "resolved_nodejs":  _get_resolved_runtimes().get("node"),
