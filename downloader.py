@@ -466,25 +466,20 @@ def get_video_info(url: str) -> dict[str, Any]:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as exc:
         msg = re.sub(r"^ERROR:\s*", "", str(exc)).strip()
-        # If bot detection or cookie error occurred and cookies were used, RETRY WITHOUT COOKIES using mobile client
-        if opts.get("cookiefile") and any(phrase in msg.lower() for phrase in ["bot", "cookies", "sign in", "format is not available"]):
-            log.warning("get_video_info encountered cookie/bot issue (%s). Retrying WITHOUT cookies...", msg)
-            fallback_opts = dict(opts)
-            fallback_opts.pop("cookiefile", None)
-            fallback_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["android", "ios", "mweb", "default"],
-                    "formats":       ["missing_pot"],
-                }
+        log.warning("get_video_info initial attempt failed (%s). Retrying with mobile stream...", msg)
+        fallback_opts = dict(opts)
+        fallback_opts.pop("cookiefile", None)
+        fallback_opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android", "ios"],
+                "player_skip":   ["web", "configs"],
             }
-            try:
-                with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
-                    info = ydl_fb.extract_info(url, download=False)
-            except Exception as fb_exc:
-                log.error("Fallback without cookies also failed: %s", fb_exc)
-                raise ValueError(msg) from exc
-        else:
-            log.error("get_video_info DownloadError: %s", msg)
+        }
+        try:
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                info = ydl_fb.extract_info(url, download=False)
+        except Exception as fb_exc:
+            log.error("Fallback extraction also failed: %s", fb_exc)
             raise ValueError(msg) from exc
     except TypeError as exc:
         # Capture full traceback for debugging

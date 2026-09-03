@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import platform
 import re
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -26,7 +27,7 @@ from utils.logger import get_logger
 log = get_logger(__name__)
 
 # ── Temp directory (intermediate yt-dlp files) ─────────────────────────────
-_TMP_DIR = Path(os.getenv("TMP_DIR", "/tmp/videodl"))
+_TMP_DIR = Path(os.getenv("TMP_DIR", Path(tempfile.gettempdir()) / "videodl"))
 
 
 def get_temp_dir() -> Path:

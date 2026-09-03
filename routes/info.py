@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import traceback
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -34,11 +35,7 @@ def _get_runtime_info() -> dict:
         "yt_dlp_version": yt_dlp.version.__version__,
     }
     # FFmpeg
-    try:
-        r = subprocess.run(["which", "ffmpeg"], capture_output=True, text=True, timeout=3)
-        info["ffmpeg"] = r.stdout.strip() if r.returncode == 0 else "NOT FOUND"
-    except Exception:
-        info["ffmpeg"] = "NOT FOUND"
+    info["ffmpeg"] = shutil.which("ffmpeg") or "NOT FOUND"
     # Node.js
     try:
         r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=3)
