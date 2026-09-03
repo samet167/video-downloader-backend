@@ -469,6 +469,7 @@ def get_video_info(url: str) -> dict[str, Any]:
         log.warning("get_video_info initial attempt failed (%s). Retrying with mobile stream...", msg)
         fallback_opts = dict(opts)
         fallback_opts.pop("cookiefile", None)
+        fallback_opts.pop("proxy", None)
         fallback_opts["extractor_args"] = {
             "youtube": {
                 "player_client": ["android", "ios"],
@@ -696,21 +697,22 @@ def download_video(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except yt_dlp.utils.DownloadError as exc:
-        msg = str(exc)
-        if ydl_opts.get("cookiefile") and any(phrase in msg.lower() for phrase in ["bot", "cookies", "sign in", "format is not available"]):
-            log.warning("download_video encountered cookie/bot issue (%s). Retrying WITHOUT cookies...", msg)
-            fb_opts = dict(ydl_opts)
-            fb_opts.pop("cookiefile", None)
-            fb_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["android", "ios", "mweb", "default"],
-                    "formats":       ["missing_pot"],
-                }
+        log.warning("download_video encountered issue (%s). Retrying with pure mobile stream...", msg)
+        fb_opts = dict(ydl_opts)
+        fb_opts.pop("cookiefile", None)
+        fb_opts.pop("proxy", None)
+        fb_opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android", "ios"],
+                "player_skip":   ["web", "configs"],
             }
+        }
+        try:
             with yt_dlp.YoutubeDL(fb_opts) as ydl_fb:
                 info = ydl_fb.extract_info(url, download=True)
-        else:
-            raise
+        except Exception as fb_exc:
+            log.error("Fallback download also failed: %s", fb_exc)
+            raise ValueError(msg) from exc
 
         if info is None:
             raise ValueError("yt-dlp returned no info after download.")
